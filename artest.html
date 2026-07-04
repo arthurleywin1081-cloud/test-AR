@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AR Test</title>
+<style>
+  body { margin:0; background:#000; color:#fff; font-family:sans-serif; }
+  #status {
+    position:fixed; top:20px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.8); padding:12px 20px; border-radius:10px;
+    border:1px solid #555; font-size:0.85rem; text-align:center;
+    max-width:90vw; z-index:100;
+  }
+  #btn {
+    position:fixed; bottom:40px; left:50%; transform:translateX(-50%);
+    padding:14px 28px; background:#ffb86b; color:#000; border:none;
+    border-radius:12px; font-size:1rem; font-weight:700; cursor:pointer;
+    z-index:100;
+  }
+</style>
+</head>
+<body>
+
+<div id="status">Checking AR support…</div>
+<button id="btn" onclick="startAR()">Enter AR</button>
+
+<script type="module">
+const status = document.getElementById("status");
+
+// Step 1: check navigator.xr
+if (!navigator.xr) {
+  status.textContent = "❌ navigator.xr is undefined. Use Chrome on Android.";
+  document.getElementById("btn").disabled = true;
+} else {
+  // Step 2: check immersive-ar support
+  navigator.xr.isSessionSupported("immersive-ar")
+    .then(supported => {
+      if (supported) {
+        status.textContent = "✅ AR supported! Tap Enter AR.";
+      } else {
+        status.textContent = "❌ immersive-ar NOT supported. Install Google Play Services for AR from Play Store.";
+        document.getElementById("btn").disabled = true;
+      }
+    })
+    .catch(err => {
+      status.textContent = "❌ isSessionSupported error: " + err.message;
+    });
+}
+
+window.startAR = function() {
+  status.textContent = "Requesting AR session…";
+
+  if (!navigator.xr) {
+    status.textContent = "❌ No navigator.xr";
+    return;
+  }
+
+  navigator.xr.requestSession("immersive-ar", {
+    optionalFeatures: ["dom-overlay"],
+    domOverlay: { root: document.body },
+  })
+  .then(session => {
+    status.textContent = "✅ Session started! Setting up renderer…";
+
+    const canvas = document.createElement("canvas");
+    document.body.appendChild(canvas);
+    canvas.style.cssText = "position:fixed;inset:0;width:100%;height:100%;";
+
+    const gl = canvas.getContext("webgl2", { xrCompatible: true });
+    if (!gl) { status.textContent = "❌ No WebGL2"; return; }
+
+    session.updateRenderState({
+      baseLayer: new XRWebGLLayer(session, gl)
+    });
+
+    session.requestReferenceSpace("local").then(refSpace => {
+      status.textContent = "✅ AR running! You should see camera feed.";
+
+      session.requestAnimationFrame(function frame(time, xrFrame) {
+        session.requestAnimationFrame(frame);
+        const pose = xrFrame.getViewerPose(refSpace);
+        if (!pose) return;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, session.renderState.baseLayer.framebuffer);
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      });
+    }).catch(err => {
+      status.textContent = "❌ referenceSpace error: " + err.name + " — " + err.message;
+    });
+
+  })
+  .catch(err => {
+    status.textContent = "❌ requestSession failed: " + err.name + " — " + err.message;
+  });
+};
+</script>
+</body>
+</html>
